@@ -32,13 +32,20 @@ export const createPhishingCampaign = async (
   emails: string[]
 ) => {
   try {
-    // Create campaign
+    // Get current user
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      throw new Error('User must be logged in to create campaigns');
+    }
+
+    // Create campaign with user_id
     const { data: campaign, error: campaignError } = await supabase
       .from('phishing_campaigns')
       .insert({
         title,
         subject,
         body,
+        user_id: session.user.id, // Add the user_id here
       })
       .select()
       .single();

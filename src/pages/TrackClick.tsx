@@ -17,6 +17,9 @@ const TrackClick = () => {
       }
 
       try {
+        // Log the click attempt
+        console.log('Processing phishing click for token:', token);
+        
         // Call the track_phishing_click function
         const { data, error } = await supabase
           .rpc('track_phishing_click', { token_param: token });
