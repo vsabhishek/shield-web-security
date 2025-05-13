@@ -1,13 +1,18 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-// Initialize Supabase client - these will be replaced with actual values after Supabase connection
-const supabaseUrl = 'https://your-project-url.supabase.co';
-const supabaseKey = 'your-anon-key';
+// Initialize Supabase client with actual values
+const supabaseUrl = 'https://bjzqfmmowlghbmsyigwm.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqenFmbW1vd2xnaGJtc3lpZ3dtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcxMjAwMzgsImV4cCI6MjA2MjY5NjAzOH0.4cf7hnJ5yGIU8LR58YV2w1g8ESz0ywRppYF2lagOxOA';
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    storage: localStorage
+  }
+});
 
-// These are mock functions for features that would be implemented in a real backend
+// These mock functions remain the same for features that would be implemented later
 export const mockScanVulnerabilities = async (target: string, scanType: string): Promise<any> => {
   // Simulating API response
   await new Promise(resolve => setTimeout(resolve, 2000));
