@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,9 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Loader2, Mail } from "lucide-react";
-import { mockSendPhishingCampaign } from "@/lib/supabase";
 import { toast } from "sonner";
-import { Bar, BarChart as ReBarChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Bar, BarChart as ReBarChart, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer } from 'recharts';
+import { createPhishingCampaign, getPhishingCampaigns, PhishingCampaign } from "@/lib/phishing-utils";
+import CampaignDetails from "@/components/CampaignDetails";
 
 const emailFormSchema = z.object({
   campaignName: z.string().min(3, { message: "Campaign name is required (min 3 characters)" }),
@@ -29,100 +30,86 @@ const emailFormSchema = z.object({
     }, { message: "Enter valid email addresses (one per line)" }),
 });
 
-const mockCampaigns = [
-  {
-    id: 'camp_123',
-    name: 'Security Training - Q1',
-    sent: 45,
-    clicked: 12,
-    date: '2023-02-15T12:00:00Z',
-    clickRate: 26.7,
-  },
-  {
-    id: 'camp_456',
-    name: 'Password Reset',
-    sent: 32,
-    clicked: 18,
-    date: '2023-03-22T10:30:00Z',
-    clickRate: 56.3,
-  },
-];
-
-const mockTemplates = [
+const templates = [
   {
     id: 'tmpl_1',
     name: 'Password Reset',
-    content: `Dear [User],
+    content: `<p>Dear User,</p>
 
-We detected unusual activity on your account. To secure your account, please reset your password immediately by clicking the link below:
+<p>We detected unusual activity on your account. To secure your account, please reset your password immediately by clicking the link below:</p>
 
-[RESET PASSWORD]
+<p><a href="[TRACKING_URL]">RESET PASSWORD</a></p>
 
-If you did not request this change, please contact our support team immediately.
+<p>If you did not request this change, please contact our support team immediately.</p>
 
-Regards,
-IT Security Team`,
+<p>Regards,<br>IT Security Team</p>`,
   },
   {
     id: 'tmpl_2',
     name: 'DocuSign Document',
-    content: `Hello [User],
+    content: `<p>Hello,</p>
 
-You have received a document to sign through DocuSign.
+<p>You have received a document to sign through DocuSign.</p>
 
-Document: [Company] Contract Renewal
-Sender: admin@company.com
+<p><strong>Document:</strong> Company Contract Renewal<br>
+<strong>Sender:</strong> admin@company.com</p>
 
-[VIEW DOCUMENT]
+<p><a href="[TRACKING_URL]">VIEW DOCUMENT</a></p>
 
-This document requires your signature by the end of the week.
+<p>This document requires your signature by the end of the week.</p>
 
-Best regards,
-DocuSign Team`,
+<p>Best regards,<br>DocuSign Team</p>`,
   },
   {
     id: 'tmpl_3',
     name: 'IT System Update',
-    content: `Important: System Update Required
+    content: `<p><strong>Important: System Update Required</strong></p>
 
-Dear [User],
+<p>Dear User,</p>
 
-Our IT department is performing critical security updates. Please verify your account to avoid service interruption:
+<p>Our IT department is performing critical security updates. Please verify your account to avoid service interruption:</p>
 
-[VERIFY ACCOUNT]
+<p><a href="[TRACKING_URL]">VERIFY ACCOUNT</a></p>
 
-This process will only take 2 minutes.
+<p>This process will only take 2 minutes.</p>
 
-Thank you,
-IT Department`,
+<p>Thank you,<br>IT Department</p>`,
   },
-];
-
-const chartData = [
-  { name: 'Security Training - Q1', clickRate: 26.7 },
-  { name: 'Password Reset', clickRate: 56.3 },
-  { name: 'IT System Update', clickRate: 38.2 },
 ];
 
 const PhishingSimulator = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('create');
   const [selectedTemplate, setSelectedTemplate] = useState('tmpl_1');
+  const [campaigns, setCampaigns] = useState<PhishingCampaign[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof emailFormSchema>>({
     resolver: zodResolver(emailFormSchema),
     defaultValues: {
       campaignName: '',
       emailSubject: '',
-      template: mockTemplates[0].content,
+      template: templates[0].content,
       targetEmails: '',
     },
   });
 
+  useEffect(() => {
+    const fetchCampaigns = async () => {
+      setLoading(true);
+      const data = await getPhishingCampaigns();
+      setCampaigns(data);
+      setLoading(false);
+    };
+
+    fetchCampaigns();
+  }, []);
+
   // Update template when selection changes
   const updateTemplate = (templateId: string) => {
     setSelectedTemplate(templateId);
-    const template = mockTemplates.find(t => t.id === templateId);
+    const template = templates.find(t => t.id === templateId);
     if (template) {
       form.setValue('template', template.content);
     }
@@ -136,25 +123,49 @@ const PhishingSimulator = () => {
       .map(e => e.trim())
       .filter(Boolean);
 
-    const campaign = {
-      name: values.campaignName,
-      subject: values.emailSubject,
-      template: values.template,
-      targets: targetEmailsArray,
-    };
-
     try {
-      await mockSendPhishingCampaign(campaign);
-      toast.success("Phishing campaign scheduled successfully");
-      form.reset();
-      setActiveTab('reports');
+      const result = await createPhishingCampaign(
+        values.campaignName,
+        values.emailSubject,
+        values.template,
+        targetEmailsArray
+      );
+      
+      if (result.success) {
+        toast.success("Phishing campaign sent successfully");
+        form.reset();
+        
+        // Refresh campaigns and switch to reports tab
+        const data = await getPhishingCampaigns();
+        setCampaigns(data);
+        setActiveTab('reports');
+      } else {
+        toast.error("Failed to send campaign");
+      }
     } catch (error) {
       console.error("Campaign error:", error);
-      toast.error("Failed to schedule campaign");
+      toast.error("Failed to send campaign");
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleViewCampaign = (campaignId: string) => {
+    setSelectedCampaignId(campaignId);
+  };
+
+  // Chart data for visualization
+  const chartData = campaigns.map(campaign => ({
+    name: campaign.title,
+    clickRate: campaign.click_rate || 0,
+  }));
+
+  if (selectedCampaignId) {
+    return <CampaignDetails 
+      campaignId={selectedCampaignId} 
+      onBack={() => setSelectedCampaignId(null)} 
+    />;
+  }
 
   return (
     <div className="space-y-6">
@@ -231,7 +242,7 @@ const PhishingSimulator = () => {
                         <SelectValue placeholder="Select template" />
                       </SelectTrigger>
                       <SelectContent>
-                        {mockTemplates.map(template => (
+                        {templates.map(template => (
                           <SelectItem key={template.id} value={template.id}>
                             {template.name}
                           </SelectItem>
@@ -255,7 +266,7 @@ const PhishingSimulator = () => {
                           />
                         </FormControl>
                         <FormDescription>
-                          Customize your phishing email content
+                          Use [TRACKING_URL] as a placeholder for the phishing link
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -293,7 +304,7 @@ const PhishingSimulator = () => {
                     {isSubmitting ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Scheduling Campaign...
+                        Sending Campaign...
                       </>
                     ) : (
                       <>
@@ -309,84 +320,111 @@ const PhishingSimulator = () => {
         </TabsContent>
         
         <TabsContent value="reports" className="space-y-4">
-          <Card className="cyber-card">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-xl font-mono">Campaign Performance</CardTitle>
-              <CardDescription>
-                Overview of click rates across campaigns
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <ReBarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis 
-                    dataKey="name" 
-                    stroke="#8892B0" 
-                    fontSize={12} 
-                    tickLine={false}
-                  />
-                  <YAxis 
-                    stroke="#8892B0" 
-                    fontSize={12}
-                    tickLine={false}
-                    unit="%" 
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#0A192F', 
-                      borderColor: '#64FFDA',
-                      fontSize: 12,
-                      fontFamily: 'monospace'
-                    }} 
-                  />
-                  <Bar 
-                    dataKey="clickRate" 
-                    fill="#64FFDA" 
-                    name="Click Rate" 
-                    unit="%" 
-                  />
-                </ReBarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-          
-          <div className="grid gap-4">
-            {mockCampaigns.map(campaign => (
-              <Card key={campaign.id} className="cyber-card">
-                <CardHeader>
-                  <CardTitle>{campaign.name}</CardTitle>
-                  <CardDescription>
-                    Sent: {new Date(campaign.date).toLocaleDateString()}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <div>
-                      <p className="text-cyber-gray text-sm">Emails Sent</p>
-                      <p className="text-xl font-mono text-cyber-lightgray">{campaign.sent}</p>
-                    </div>
-                    <div>
-                      <p className="text-cyber-gray text-sm">Clicks</p>
-                      <p className="text-xl font-mono text-cyber-lightgray">{campaign.clicked}</p>
-                    </div>
-                    <div>
-                      <p className="text-cyber-gray text-sm">Click Rate</p>
-                      <p className={`text-xl font-mono ${campaign.clickRate > 30 ? 'text-red-400' : 'text-green-400'}`}>
-                        {campaign.clickRate}%
-                      </p>
-                    </div>
+          {loading ? (
+            <Card className="cyber-card py-8">
+              <CardContent className="flex justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-cyber-blue" />
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {campaigns.length > 0 ? (
+                <>
+                  <Card className="cyber-card">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-xl font-mono">Campaign Performance</CardTitle>
+                      <CardDescription>
+                        Overview of click rates across campaigns
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ReBarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                          <XAxis 
+                            dataKey="name" 
+                            stroke="#8892B0" 
+                            fontSize={12} 
+                            tickLine={false}
+                          />
+                          <YAxis 
+                            stroke="#8892B0" 
+                            fontSize={12}
+                            tickLine={false}
+                            unit="%" 
+                          />
+                          <ReTooltip 
+                            contentStyle={{ 
+                              backgroundColor: '#0A192F', 
+                              borderColor: '#64FFDA',
+                              fontSize: 12,
+                              fontFamily: 'monospace'
+                            }} 
+                          />
+                          <Bar 
+                            dataKey="clickRate" 
+                            fill="#64FFDA" 
+                            name="Click Rate" 
+                            unit="%" 
+                          />
+                        </ReBarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                  
+                  <div className="grid gap-4">
+                    {campaigns.map(campaign => (
+                      <Card key={campaign.id} className="cyber-card">
+                        <CardHeader>
+                          <CardTitle>{campaign.title}</CardTitle>
+                          <CardDescription>
+                            Subject: {campaign.subject}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-3 gap-4 text-center">
+                            <div>
+                              <p className="text-cyber-gray text-sm">Emails Sent</p>
+                              <p className="text-xl font-mono text-cyber-lightgray">{campaign.total_sent || 0}</p>
+                            </div>
+                            <div>
+                              <p className="text-cyber-gray text-sm">Clicks</p>
+                              <p className="text-xl font-mono text-cyber-lightgray">{campaign.clicked_count || 0}</p>
+                            </div>
+                            <div>
+                              <p className="text-cyber-gray text-sm">Click Rate</p>
+                              <p className={`text-xl font-mono ${(campaign.click_rate || 0) > 30 ? 'text-red-400' : 'text-green-400'}`}>
+                                {campaign.click_rate?.toFixed(1) || '0.0'}%
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                        <CardFooter>
+                          <Button 
+                            variant="outline" 
+                            className="w-full"
+                            onClick={() => handleViewCampaign(campaign.id)}
+                          >
+                            <BarChart className="mr-2 h-4 w-4" />
+                            View Details
+                          </Button>
+                        </CardFooter>
+                      </Card>
+                    ))}
                   </div>
-                </CardContent>
-                <CardFooter>
-                  <Button variant="outline" className="w-full">
-                    <BarChart className="mr-2 h-4 w-4" />
-                    View Details
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
+                </>
+              ) : (
+                <Card className="cyber-card py-8">
+                  <CardContent className="text-center">
+                    <p className="text-cyber-gray mb-4">No campaigns found</p>
+                    <Button onClick={() => setActiveTab('create')}>
+                      Create Your First Campaign
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </div>

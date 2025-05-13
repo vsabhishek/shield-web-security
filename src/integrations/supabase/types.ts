@@ -9,13 +9,80 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      phishing_campaigns: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          subject: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          subject: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          subject?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      phishing_recipients: {
+        Row: {
+          campaign_id: string
+          clicked: boolean | null
+          clicked_at: string | null
+          created_at: string
+          email: string
+          id: string
+          token: string
+        }
+        Insert: {
+          campaign_id: string
+          clicked?: boolean | null
+          clicked_at?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          token: string
+        }
+        Update: {
+          campaign_id?: string
+          clicked?: boolean | null
+          clicked_at?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phishing_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "phishing_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      track_phishing_click: {
+        Args: { token_param: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

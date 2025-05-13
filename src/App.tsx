@@ -17,6 +17,7 @@ import VulnerabilityScanner from "./pages/VulnerabilityScanner";
 import PasswordAnalyzer from "./pages/PasswordAnalyzer";
 import PhishingSimulator from "./pages/PhishingSimulator";
 import PortScanner from "./pages/PortScanner";
+import TrackClick from "./pages/TrackClick";
 import NotFound from "./pages/NotFound";
 
 // Auth Guard
@@ -34,6 +35,7 @@ const App = () => (
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/track/:token" element={<TrackClick />} />
             
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
