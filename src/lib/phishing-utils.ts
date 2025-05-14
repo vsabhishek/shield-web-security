@@ -38,6 +38,8 @@ export const createPhishingCampaign = async (
       throw new Error('User must be logged in to create campaigns');
     }
 
+    console.log("Creating phishing campaign with user_id:", session.user.id);
+    
     // Create campaign with user_id
     const { data: campaign, error: campaignError } = await supabase
       .from('phishing_campaigns')
@@ -45,12 +47,17 @@ export const createPhishingCampaign = async (
         title,
         subject,
         body,
-        user_id: session.user.id, // Add the user_id here
+        user_id: session.user.id,
       })
       .select()
       .single();
 
-    if (campaignError) throw campaignError;
+    if (campaignError) {
+      console.error("Campaign creation error:", campaignError);
+      throw campaignError;
+    }
+    
+    console.log("Campaign created successfully:", campaign);
     
     // Add recipients
     const recipients = emails.map(email => ({
@@ -63,22 +70,38 @@ export const createPhishingCampaign = async (
       .from('phishing_recipients')
       .insert(recipients);
       
-    if (recipientsError) throw recipientsError;
+    if (recipientsError) {
+      console.error("Recipients creation error:", recipientsError);
+      throw recipientsError;
+    }
+
+    console.log("Recipients created successfully:", recipients.length);
 
     // Send emails to each recipient
-    const sendPromises = recipients.map(recipient => 
-      supabase.functions.invoke('send-phishing-email', {
-        body: {
-          to: recipient.email,
-          subject,
-          html: body,
-          token: recipient.token,
-          campaignId: campaign.id
-        }
-      })
-    );
+    const sendPromises = recipients.map(async recipient => {
+      console.log(`Sending email to ${recipient.email} with token ${recipient.token}`);
+      
+      try {
+        const result = await supabase.functions.invoke('send-phishing-email', {
+          body: {
+            to: recipient.email,
+            subject,
+            html: body,
+            token: recipient.token,
+            campaignId: campaign.id
+          }
+        });
+        
+        console.log("Email sending result:", result);
+        return result;
+      } catch (err) {
+        console.error(`Error sending email to ${recipient.email}:`, err);
+        throw err;
+      }
+    });
 
-    await Promise.all(sendPromises);
+    const emailResults = await Promise.all(sendPromises);
+    console.log("All emails sent, results:", emailResults);
     
     return { success: true, campaign };
   } catch (error) {

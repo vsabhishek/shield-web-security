@@ -31,43 +31,39 @@ serve(async (req) => {
       });
     }
 
+    console.log("Processing email request...");
     const { to, subject, html, token, campaignId } = await req.json() as EmailRequest;
     
     // Validate required fields
     if (!to || !subject || !html || !token || !campaignId) {
+      console.error("Missing required fields", { to, subject, html: !!html, token, campaignId });
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
       });
     }
 
-    // Get email credentials from environment variables
-    const smtpHost = Deno.env.get('SMTP_HOST') || '';
-    const smtpPort = Number(Deno.env.get('SMTP_PORT')) || 587;
-    const smtpUser = Deno.env.get('SMTP_USER') || '';
-    const smtpPassword = Deno.env.get('SMTP_PASSWORD') || '';
-    const fromEmail = Deno.env.get('FROM_EMAIL') || 'security-training@example.com';
+    // SMTP configuration - using environment variables
+    // These are now hardcoded for testing, but would typically come from Deno.env
+    const smtpHost = "smtp.gmail.com";
+    const smtpPort = 587;
+    const smtpUser = "veerasivaabhishek5744@gmail.com";
+    const smtpPassword = "Abhi@1433"; 
+    const fromEmail = "security-training@example.com";
     
-    if (!smtpHost || !smtpUser || !smtpPassword) {
-      console.error('Email configuration not set');
-      return new Response(JSON.stringify({ error: 'Email configuration not set' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
-    }
-
-    // Create tracking URL - replace with your actual domain or Netlify/Vercel URL
-    const trackingDomain = Deno.env.get('PUBLIC_TRACKING_DOMAIN') || 'https://your-domain.com';
+    // Create tracking URL - using the Lovable project URL
+    const trackingDomain = "https://011f5a82-9278-49d5-8f8d-d7f35f06c5e2.lovableproject.com";
     const trackingUrl = `${trackingDomain}/track/${token}`;
     console.log(`Generated tracking URL: ${trackingUrl}`);
 
     // Replace placeholders in HTML
     const finalHtml = html.replace(/\[TRACKING_URL\]/g, trackingUrl);
 
+    console.log(`Connecting to SMTP: ${smtpHost}:${smtpPort} with user: ${smtpUser}`);
+    
     // Create SMTP client
     const client = new SmtpClient();
     
-    console.log(`Connecting to SMTP: ${smtpHost}:${smtpPort}`);
     await client.connectTLS({
       hostname: smtpHost,
       port: smtpPort,

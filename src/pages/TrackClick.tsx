@@ -31,7 +31,6 @@ const TrackClick = () => {
         }
 
         // Redirect to a realistic-looking login page or other destination
-        // For demonstration purposes, we're redirecting to the login page
         setRedirectUrl('/login');
       } catch (error) {
         console.error('Error:', error);
@@ -48,7 +47,7 @@ const TrackClick = () => {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-cyber-blue" />
-        <p className="ml-2">Redirecting...</p>
+        <p className="ml-2">Redirecting to secure login...</p>
       </div>
     );
   }
