@@ -47,7 +47,7 @@ serve(async (req) => {
     const smtpHost = "smtp.gmail.com";
     const smtpPort = 587;
     const smtpUser = "veerasivaabhishek5744@gmail.com";
-    const smtpPass = "lgarlnpksewombgl"; // Using app password
+    const smtpPass = "jgci gfgs xvbe zlrt"; // Updated app password
     const fromEmail = "security-training@example.com";
     
     // Create tracking URL - using the Lovable project URL

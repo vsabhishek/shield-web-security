@@ -81,6 +81,7 @@ export const createPhishingCampaign = async (
     // Send emails to each recipient
     let successCount = 0;
     let errorCount = 0;
+    let errorMessages = [];
     
     for (const recipient of recipients) {
       console.log(`Sending email to ${recipient.email} with token ${recipient.token}`);
@@ -101,22 +102,26 @@ export const createPhishingCampaign = async (
         if (result.error) {
           console.error(`Error sending to ${recipient.email}:`, result.error);
           errorCount++;
+          errorMessages.push(`${recipient.email}: ${result.error}`);
         } else {
           successCount++;
         }
       } catch (err) {
         console.error(`Error sending email to ${recipient.email}:`, err);
         errorCount++;
+        errorMessages.push(`${recipient.email}: ${err.message}`);
       }
     }
 
     console.log(`Email sending complete. Success: ${successCount}, Failed: ${errorCount}`);
+    console.log("Error messages:", errorMessages);
     
     if (errorCount > 0) {
       return { 
         success: successCount > 0, 
         campaign,
-        message: `${successCount} email(s) sent successfully, ${errorCount} failed.` 
+        message: `${successCount} email(s) sent successfully, ${errorCount} failed.`,
+        errors: errorMessages
       };
     }
     
