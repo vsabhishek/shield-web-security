@@ -1,6 +1,7 @@
 
 import { supabase } from './supabase';
 import { v4 as uuidv4 } from 'uuid';
+import { toast } from "sonner";
 
 // Types for phishing campaigns
 export type PhishingCampaign = {
@@ -78,7 +79,10 @@ export const createPhishingCampaign = async (
     console.log("Recipients created successfully:", recipients.length);
 
     // Send emails to each recipient
-    const sendPromises = recipients.map(async recipient => {
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const recipient of recipients) {
       console.log(`Sending email to ${recipient.email} with token ${recipient.token}`);
       
       try {
@@ -93,15 +97,28 @@ export const createPhishingCampaign = async (
         });
         
         console.log("Email sending result:", result);
-        return result;
+        
+        if (result.error) {
+          console.error(`Error sending to ${recipient.email}:`, result.error);
+          errorCount++;
+        } else {
+          successCount++;
+        }
       } catch (err) {
         console.error(`Error sending email to ${recipient.email}:`, err);
-        throw err;
+        errorCount++;
       }
-    });
+    }
 
-    const emailResults = await Promise.all(sendPromises);
-    console.log("All emails sent, results:", emailResults);
+    console.log(`Email sending complete. Success: ${successCount}, Failed: ${errorCount}`);
+    
+    if (errorCount > 0) {
+      return { 
+        success: successCount > 0, 
+        campaign,
+        message: `${successCount} email(s) sent successfully, ${errorCount} failed.` 
+      };
+    }
     
     return { success: true, campaign };
   } catch (error) {

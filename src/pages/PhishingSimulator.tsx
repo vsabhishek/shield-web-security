@@ -132,7 +132,13 @@ const PhishingSimulator = () => {
       );
       
       if (result.success) {
-        toast.success("Phishing campaign sent successfully");
+        if (result.message) {
+          // Partial success with some failures
+          toast.info(`Campaign created: ${result.message}`);
+        } else {
+          toast.success("Phishing campaign sent successfully");
+        }
+        
         form.reset();
         
         // Refresh campaigns and switch to reports tab
@@ -140,11 +146,11 @@ const PhishingSimulator = () => {
         setCampaigns(data);
         setActiveTab('reports');
       } else {
-        toast.error("Failed to send campaign");
+        toast.error("Failed to send campaign: " + (result.error?.message || "Unknown error"));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Campaign error:", error);
-      toast.error("Failed to send campaign");
+      toast.error("Failed to send campaign: " + (error?.message || "Unknown error"));
     } finally {
       setIsSubmitting(false);
     }

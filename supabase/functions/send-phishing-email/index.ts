@@ -43,12 +43,11 @@ serve(async (req) => {
       });
     }
 
-    // SMTP configuration - using environment variables
-    // These are now hardcoded for testing, but would typically come from Deno.env
+    // Use environment variables for SMTP configuration
     const smtpHost = "smtp.gmail.com";
     const smtpPort = 587;
     const smtpUser = "veerasivaabhishek5744@gmail.com";
-    const smtpPassword = "Abhi@1433"; 
+    const smtpPass = "lgarlnpksewombgl"; // Using app password
     const fromEmail = "security-training@example.com";
     
     // Create tracking URL - using the Lovable project URL
@@ -61,32 +60,42 @@ serve(async (req) => {
 
     console.log(`Connecting to SMTP: ${smtpHost}:${smtpPort} with user: ${smtpUser}`);
     
-    // Create SMTP client
+    // Create SMTP client with TLS configuration
     const client = new SmtpClient();
     
-    await client.connectTLS({
-      hostname: smtpHost,
-      port: smtpPort,
-      username: smtpUser,
-      password: smtpPassword,
-    });
+    try {
+      await client.connectTLS({
+        hostname: smtpHost,
+        port: smtpPort,
+        username: smtpUser,
+        password: smtpPass,
+      });
 
-    // Send email
-    console.log(`Sending email to: ${to}`);
-    await client.send({
-      from: fromEmail,
-      to: to,
-      subject: subject,
-      html: finalHtml,
-    });
+      // Send email
+      console.log(`Sending email to: ${to}`);
+      const sendResult = await client.send({
+        from: fromEmail,
+        to: to,
+        subject: subject,
+        content: finalHtml,
+        html: finalHtml,
+      });
+      
+      console.log("Send result:", sendResult);
+      await client.close();
+      console.log(`Email sent successfully to: ${to}`);
 
-    await client.close();
-    console.log(`Email sent successfully to: ${to}`);
-
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      });
+    } catch (smtpError) {
+      console.error("SMTP Error:", smtpError);
+      return new Response(JSON.stringify({ error: `SMTP Error: ${smtpError.message}` }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      });
+    }
   } catch (error) {
     console.error('Error sending email:', error);
     return new Response(JSON.stringify({ error: error.message }), {
