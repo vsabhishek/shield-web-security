@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { 
   Card,
@@ -12,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CheckCircle, XCircle, Download, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
-import { PhishingCampaign, PhishingRecipient, getPhishingCampaignDetails } from "@/lib/phishing-utils";
+import { PhishingCampaign, PhishingRecipient, getPhishingCampaignDetails } from "@/lib/phishing";
 
 interface CampaignDetailsProps {
   campaignId: string;

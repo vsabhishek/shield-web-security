@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart, Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Bar, BarChart as ReBarChart, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer } from 'recharts';
-import { createPhishingCampaign, getPhishingCampaigns, PhishingCampaign } from "@/lib/phishing-utils";
+import { createPhishingCampaign, getPhishingCampaigns, PhishingCampaign } from "@/lib/phishing";
 import CampaignDetails from "@/components/CampaignDetails";
 
 const emailFormSchema = z.object({
