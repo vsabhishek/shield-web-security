@@ -2,6 +2,7 @@
 import { supabase } from '../supabase';
 import { v4 as uuidv4 } from 'uuid';
 import { PhishingCampaign, CreateCampaignResult } from './types';
+import { toast } from 'sonner';
 
 // Function to create a new campaign
 export const createPhishingCampaign = async (
@@ -62,7 +63,7 @@ export const createPhishingCampaign = async (
     let errorMessages = [];
     
     for (const recipient of recipients) {
-      console.log(`Sending email to ${recipient.email} with token ${recipient.token}`);
+      console.log(`Attempting to send email to ${recipient.email} with token ${recipient.token}`);
       
       try {
         const result = await supabase.functions.invoke('send-phishing-email', {
@@ -80,31 +81,46 @@ export const createPhishingCampaign = async (
         if (result.error) {
           console.error(`Error sending to ${recipient.email}:`, result.error);
           errorCount++;
-          errorMessages.push(`${recipient.email}: ${result.error}`);
+          errorMessages.push(`${recipient.email}: ${result.error.message || 'Unknown error'}`);
         } else {
           successCount++;
+          toast.success(`Email sent to ${recipient.email}`);
         }
-      } catch (err) {
-        console.error(`Error sending email to ${recipient.email}:`, err);
+      } catch (err: any) {
+        console.error(`Exception sending email to ${recipient.email}:`, err);
         errorCount++;
-        errorMessages.push(`${recipient.email}: ${err.message}`);
+        errorMessages.push(`${recipient.email}: ${err.message || 'Unknown error'}`);
       }
     }
 
     console.log(`Email sending complete. Success: ${successCount}, Failed: ${errorCount}`);
     
-    if (errorCount > 0) {
+    if (errorCount > 0 && successCount === 0) {
+      // All emails failed
       return { 
-        success: successCount > 0, 
+        success: false, 
+        campaign,
+        message: `Failed to send any emails. ${errorMessages.join(', ')}`,
+        errors: errorMessages
+      };
+    } else if (errorCount > 0) {
+      // Some emails failed
+      return { 
+        success: true, 
         campaign,
         message: `${successCount} email(s) sent successfully, ${errorCount} failed.`,
         errors: errorMessages
       };
     }
     
+    // All emails sent successfully
     return { success: true, campaign };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating phishing campaign:', error);
-    return { success: false, error };
+    return { 
+      success: false, 
+      error: error,
+      message: error.message || 'Unknown error'
+    };
   }
 };

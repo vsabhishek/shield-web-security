@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -132,9 +131,10 @@ const PhishingSimulator = () => {
       );
       
       if (result.success) {
-        if (result.message) {
+        if (result.errors && result.errors.length > 0) {
           // Partial success with some failures
-          toast.info(`Campaign created: ${result.message}`);
+          toast.info(result.message || "Campaign created with some email failures");
+          console.log("Email sending errors:", result.errors);
         } else {
           toast.success("Phishing campaign sent successfully");
         }
@@ -146,7 +146,9 @@ const PhishingSimulator = () => {
         setCampaigns(data);
         setActiveTab('reports');
       } else {
-        toast.error("Failed to send campaign: " + (result.error?.message || "Unknown error"));
+        const errorMsg = result.message || (result.error?.message) || "Unknown error";
+        toast.error("Failed to send campaign: " + errorMsg);
+        console.error("Campaign errors:", result.errors || result.error);
       }
     } catch (error: any) {
       console.error("Campaign error:", error);
