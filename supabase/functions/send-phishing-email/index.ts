@@ -50,9 +50,22 @@ serve(async (req) => {
     // Replace placeholders in HTML
     const finalHtml = html.replace(/\[TRACKING_URL\]/g, trackingUrl);
 
-    // Since we're having issues with SMTP in the Edge Function environment,
-    // let's simulate successful email sending for testing purposes
-    console.log(`Simulating email sent to: ${to}`);
+    // Get API key from environment
+    const apiKey = Deno.env.get("PHISHING_API_KEY");
+    if (!apiKey) {
+      console.error("API key not found in environment");
+      return new Response(
+        JSON.stringify({ error: 'API key not configured' }),
+        {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        }
+      );
+    }
+
+    // For now, we'll continue to simulate email sending, but log that we have the API key
+    console.log(`API key is configured: ${apiKey.substring(0, 5)}...`);
+    console.log(`Would send email to: ${to} (with API authentication)`);
     console.log(`Subject: ${subject}`);
     console.log(`Tracking URL: ${trackingUrl}`);
 
@@ -60,7 +73,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Email would be sent to ${to} (simulated for testing)`
+        message: `Email simulation sent to ${to} (with API key authentication)`
       }),
       {
         status: 200,
