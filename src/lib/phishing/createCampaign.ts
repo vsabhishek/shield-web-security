@@ -38,6 +38,7 @@ export const createPhishingCampaign = async (
     }
     
     console.log("Campaign created successfully:", campaign);
+    toast.success("Campaign created successfully");
     
     // Add recipients
     const recipients = emails.map(email => ({
@@ -56,11 +57,14 @@ export const createPhishingCampaign = async (
     }
 
     console.log("Recipients created successfully:", recipients.length);
+    toast.success(`Added ${recipients.length} recipients to the campaign`);
 
     // Send emails to each recipient
     let successCount = 0;
     let errorCount = 0;
     let errorMessages = [];
+    
+    toast.info("Sending phishing emails...");
     
     for (const recipient of recipients) {
       console.log(`Attempting to send email to ${recipient.email} with token ${recipient.token}`);
@@ -82,6 +86,7 @@ export const createPhishingCampaign = async (
           console.error(`Error sending to ${recipient.email}:`, result.error);
           errorCount++;
           errorMessages.push(`${recipient.email}: ${result.error.message || 'Unknown error'}`);
+          toast.error(`Failed to send to ${recipient.email}: ${result.error.message || 'Unknown error'}`);
         } else {
           successCount++;
           toast.success(`Email sent to ${recipient.email}`);
@@ -90,6 +95,7 @@ export const createPhishingCampaign = async (
         console.error(`Exception sending email to ${recipient.email}:`, err);
         errorCount++;
         errorMessages.push(`${recipient.email}: ${err.message || 'Unknown error'}`);
+        toast.error(`Exception sending to ${recipient.email}: ${err.message || 'Unknown error'}`);
       }
     }
 
@@ -97,6 +103,7 @@ export const createPhishingCampaign = async (
     
     if (errorCount > 0 && successCount === 0) {
       // All emails failed
+      toast.error(`Failed to send any emails. Please check the console for details.`);
       return { 
         success: false, 
         campaign,
@@ -105,6 +112,7 @@ export const createPhishingCampaign = async (
       };
     } else if (errorCount > 0) {
       // Some emails failed
+      toast.warning(`${successCount} email(s) sent successfully, ${errorCount} failed.`);
       return { 
         success: true, 
         campaign,
@@ -114,9 +122,11 @@ export const createPhishingCampaign = async (
     }
     
     // All emails sent successfully
+    toast.success(`All ${successCount} emails sent successfully!`);
     return { success: true, campaign };
   } catch (error: any) {
     console.error('Error creating phishing campaign:', error);
+    toast.error(error.message || 'Unknown error creating campaign');
     return { 
       success: false, 
       error,
