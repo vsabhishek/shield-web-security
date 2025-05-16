@@ -63,17 +63,50 @@ serve(async (req) => {
       );
     }
 
-    // For now, we'll continue to simulate email sending, but log that we have the API key
-    console.log(`API key is configured: ${apiKey.substring(0, 5)}...`);
-    console.log(`Would send email to: ${to} (with API authentication)`);
-    console.log(`Subject: ${subject}`);
-    console.log(`Tracking URL: ${trackingUrl}`);
-
+    // Configure email sending service API endpoint
+    const emailApiEndpoint = "https://api.mailgun.net/v3/sandbox.mailgun.org/messages";
+    
+    // Prepare form data for email sending
+    const formData = new FormData();
+    formData.append("from", "Phishing Simulator <no-reply@sandbox.mailgun.org>");
+    formData.append("to", to);
+    formData.append("subject", subject);
+    formData.append("html", finalHtml);
+    
+    // Send actual email using the API key
+    console.log(`Sending real email to: ${to}`);
+    const response = await fetch(emailApiEndpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${btoa(`api:${apiKey}`)}`,
+      },
+      body: formData,
+    });
+    
+    const responseData = await response.json();
+    
+    if (!response.ok) {
+      console.error("Email API error:", responseData);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to send email',
+          details: responseData 
+        }),
+        {
+          status: response.status,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        }
+      );
+    }
+    
+    console.log("Email sent successfully:", responseData);
+    
     // Return success response
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Email simulation sent to ${to} (with API key authentication)`
+        message: `Email sent to ${to} successfully`,
+        details: responseData
       }),
       {
         status: 200,

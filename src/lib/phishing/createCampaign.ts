@@ -84,7 +84,7 @@ export const createPhishingCampaign = async (
           errorMessages.push(`${recipient.email}: ${result.error.message || 'Unknown error'}`);
         } else {
           successCount++;
-          console.log(`Email sent successfully to ${recipient.email}`);
+          toast.success(`Email sent to ${recipient.email}`);
         }
       } catch (err: any) {
         console.error(`Exception sending email to ${recipient.email}:`, err);
@@ -100,7 +100,7 @@ export const createPhishingCampaign = async (
       return { 
         success: false, 
         campaign,
-        message: `Failed to send any emails. ${errorCount} failed.`,
+        message: `Failed to send any emails. Error: ${errorMessages.join(', ')}`,
         errors: errorMessages
       };
     } else if (errorCount > 0) {
