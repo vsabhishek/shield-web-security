@@ -2,7 +2,7 @@
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/011f5a82-9278-49d5-8f8d-d7f35f06c5e2
+**URL**: (https://shield-web-security.lovable.app/)
 
 
 
