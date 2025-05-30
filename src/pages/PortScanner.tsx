@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,9 +10,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2 } from "lucide-react";
-import { mockScanPorts } from "@/lib/supabase";
-import CyberTerminal from "@/components/CyberTerminal";
+import { Loader2, Wifi, WifiOff, Shield } from "lucide-react";
+import { realTimePortScanner, PortScanResult } from "@/services/realTimePortScanner";
+import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
   target: z.string().min(1, { message: "Target is required" })
@@ -36,9 +36,12 @@ const commonPorts = [
 
 const PortScanner = () => {
   const [isScanning, setIsScanning] = useState(false);
-  const [scanResults, setScanResults] = useState<any>(null);
+  const [scanResults, setScanResults] = useState<PortScanResult | null>(null);
   const [scanOutput, setScanOutput] = useState<string[]>([]);
   const [selectedPorts, setSelectedPorts] = useState<number[]>([22, 80, 443]);
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -46,6 +49,43 @@ const PortScanner = () => {
       target: "",
     },
   });
+
+  useEffect(() => {
+    const handlePortScanOutput = (event: CustomEvent) => {
+      const line = event.detail;
+      setScanOutput(prev => [...prev, line]);
+    };
+
+    const handlePortScanComplete = (event: CustomEvent) => {
+      const result = event.detail as PortScanResult;
+      setScanResults(result);
+      setIsScanning(false);
+      setConnectionStatus('disconnected');
+      
+      const openCount = result.results.filter(r => r.status === 'open').length;
+      
+      toast({
+        title: "Real-Time Port Scan Completed",
+        description: `Found ${openCount} open ports with Shodan intelligence`,
+        variant: openCount > 0 ? "default" : "secondary",
+      });
+    };
+
+    window.addEventListener('portScanOutput', handlePortScanOutput as EventListener);
+    window.addEventListener('portScanComplete', handlePortScanComplete as EventListener);
+    
+    return () => {
+      window.removeEventListener('portScanOutput', handlePortScanOutput as EventListener);
+      window.removeEventListener('portScanComplete', handlePortScanComplete as EventListener);
+    };
+  }, [toast]);
+
+  useEffect(() => {
+    // Auto-scroll terminal to bottom
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [scanOutput]);
 
   const togglePort = (portId: number) => {
     setSelectedPorts(current => 
@@ -66,63 +106,76 @@ const PortScanner = () => {
     
     setIsScanning(true);
     setScanResults(null);
-    
-    // Sort ports for display
-    const sortedPorts = [...selectedPorts].sort((a, b) => a - b);
-    
-    // Simulate terminal output
-    setScanOutput([
-      `[*] Starting port scan on target: ${values.target}`,
-      `[*] Scanning ${selectedPorts.length} ports: ${sortedPorts.join(', ')}`,
-      `[*] Initializing scan...`,
-    ]);
+    setScanOutput([]);
+    setConnectionStatus('connecting');
     
     try {
-      const results = await mockScanPorts(values.target, selectedPorts);
+      await realTimePortScanner.startPortScan(values.target, selectedPorts);
+      setConnectionStatus('connected');
       
-      // Add output lines gradually
-      for (const port of sortedPorts) {
-        const portResult = results.results.find((r: any) => r.port === port);
-        const status = portResult.status === 'open' ? 'OPEN' : 'closed';
-        
-        // Add a small delay between lines
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        setScanOutput(prev => [
-          ...prev,
-          `[*] Port ${port.toString().padEnd(5)} | ${status.padEnd(6)} ${portResult.service ? '| ' + portResult.service : ''}`,
-        ]);
-      }
-      
-      setScanOutput(prev => [
-        ...prev,
-        `[+] Scan completed: ${results.results.filter((r: any) => r.status === 'open').length} open ports found`,
-      ]);
-      
-      setScanResults(results);
+      toast({
+        title: "Real-Time Port Scan Started",
+        description: `Scanning ${selectedPorts.length} ports with Shodan intelligence`,
+      });
     } catch (error) {
       console.error("Port scan error:", error);
-      setScanOutput(prev => [...prev, `[!] Error during scan: ${error}`]);
-    } finally {
       setIsScanning(false);
+      setConnectionStatus('disconnected');
+      toast({
+        title: "Scan Failed to Start",
+        description: "Unable to initiate port scan. Check network connection.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopScan = () => {
+    realTimePortScanner.stopScan();
+    setIsScanning(false);
+    setConnectionStatus('disconnected');
+    toast({
+      title: "Scan Stopped",
+      description: "Real-time port scan has been terminated",
+    });
+  };
+
+  const getConnectionIcon = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return <Wifi className="h-4 w-4 text-green-500" />;
+      case 'connecting':
+        return <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />;
+      default:
+        return <WifiOff className="h-4 w-4 text-red-500" />;
     }
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-cyber-blue font-mono">Port Scanner</h1>
-        <p className="text-cyber-gray mt-2">
-          Scan for open ports on target systems
-        </p>
+        <h1 className="text-3xl font-bold tracking-tight text-cyber-blue font-mono">
+          Real-Time Port Scanner
+        </h1>
+        <div className="flex items-center gap-2 mt-2">
+          <p className="text-cyber-gray">
+            Advanced port scanning with Shodan intelligence and real-time results
+          </p>
+          <div className="flex items-center gap-1">
+            {getConnectionIcon()}
+            <span className="text-xs text-cyber-gray capitalize">{connectionStatus}</span>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="cyber-card">
           <CardHeader>
-            <CardTitle className="text-xl font-mono">Scan Configuration</CardTitle>
+            <CardTitle className="text-xl font-mono flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Real-Time Scan Configuration
+            </CardTitle>
             <CardDescription>
-              Enter target and select ports to scan
+              Enter target and select ports for live scanning with Shodan data
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -143,7 +196,7 @@ const PortScanner = () => {
                         />
                       </FormControl>
                       <FormDescription>
-                        Domain name or IP address to scan
+                        Domain name or IP address for real-time port scanning
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -151,7 +204,7 @@ const PortScanner = () => {
                 />
 
                 <div className="space-y-2">
-                  <FormLabel>Ports to Scan</FormLabel>
+                  <FormLabel>Ports to Scan (with Shodan Intelligence)</FormLabel>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     {commonPorts.map((port) => (
                       <div key={port.id} className="flex items-center space-x-2">
@@ -175,20 +228,32 @@ const PortScanner = () => {
                   )}
                 </div>
 
-                <Button 
-                  type="submit" 
-                  className="w-full cyber-btn" 
-                  disabled={isScanning || selectedPorts.length === 0}
-                >
-                  {isScanning ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Scanning...
-                    </>
-                  ) : (
-                    "Run Port Scan"
+                <div className="flex gap-2">
+                  <Button 
+                    type="submit" 
+                    className="cyber-btn flex-1" 
+                    disabled={isScanning || selectedPorts.length === 0}
+                  >
+                    {isScanning ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Real-Time Scanning...
+                      </>
+                    ) : (
+                      "Start Real-Time Port Scan"
+                    )}
+                  </Button>
+                  
+                  {isScanning && (
+                    <Button 
+                      type="button" 
+                      variant="destructive" 
+                      onClick={stopScan}
+                    >
+                      Stop
+                    </Button>
                   )}
-                </Button>
+                </div>
               </form>
             </Form>
           </CardContent>
@@ -196,14 +261,32 @@ const PortScanner = () => {
         
         <Card className="cyber-card">
           <CardHeader>
-            <CardTitle className="text-xl font-mono">Scan Output</CardTitle>
+            <CardTitle className="text-xl font-mono flex items-center gap-2">
+              Live Scan Output
+              {isScanning && <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>}
+            </CardTitle>
+            <CardDescription>Real-time port scanning results with Shodan data</CardDescription>
           </CardHeader>
           <CardContent>
-            <CyberTerminal 
-              content={scanOutput.length > 0 ? scanOutput : "# No scan running yet\n# Select target and ports, then click Run Port Scan"} 
-              className="h-80"
-              typing={isScanning}
-            />
+            <div 
+              ref={terminalRef}
+              className="bg-black text-green-400 font-mono text-sm p-4 rounded-md h-80 overflow-auto border"
+            >
+              {scanOutput.length === 0 ? (
+                <div className="text-gray-500">
+                  # Real-time port scanner ready
+                  <br />
+                  # Select target and ports, then click Start Real-Time Port Scan
+                  <br />
+                  # Powered by Shodan intelligence for enhanced accuracy
+                </div>
+              ) : (
+                <pre className="whitespace-pre-wrap">
+                  {scanOutput.join('')}
+                  {isScanning && <span className="animate-pulse">█</span>}
+                </pre>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -211,9 +294,12 @@ const PortScanner = () => {
       {scanResults && (
         <Card className="cyber-card">
           <CardHeader>
-            <CardTitle className="text-xl font-mono">Scan Results</CardTitle>
+            <CardTitle className="text-xl font-mono">Real-Time Scan Results</CardTitle>
             <CardDescription>
-              Target: {scanResults.target} | Time: {new Date(scanResults.timestamp).toLocaleString()}
+              Target: {scanResults.target} | Time: {new Date(scanResults.startTime).toLocaleString()}
+              {scanResults.shodanData && (
+                <span className="ml-2 text-green-600">• Enhanced with Shodan intelligence</span>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -223,10 +309,11 @@ const PortScanner = () => {
                   <TableHead>Port</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Service</TableHead>
+                  <TableHead>Banner/Version</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {scanResults.results.map((result: any) => (
+                {scanResults.results.map((result) => (
                   <TableRow key={result.port}>
                     <TableCell className="font-mono">{result.port}</TableCell>
                     <TableCell>
@@ -235,6 +322,8 @@ const PortScanner = () => {
                         className={
                           result.status === 'open' 
                             ? "bg-green-500 hover:bg-green-500/90" 
+                            : result.status === 'filtered'
+                            ? "bg-yellow-500 hover:bg-yellow-500/90"
                             : "bg-cyber-gray/20 text-cyber-gray hover:bg-cyber-gray/30"
                         }
                       >
@@ -242,10 +331,32 @@ const PortScanner = () => {
                       </Badge>
                     </TableCell>
                     <TableCell>{result.service || '-'}</TableCell>
+                    <TableCell className="text-xs">
+                      {result.banner ? result.banner.substring(0, 50) + (result.banner.length > 50 ? '...' : '') : 
+                       result.version || '-'}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+            
+            {scanResults.shodanData && (
+              <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950 rounded-md">
+                <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">
+                  Shodan Intelligence Summary:
+                </h4>
+                <div className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                  <p>Organization: {scanResults.shodanData.organization || 'Unknown'}</p>
+                  <p>Location: {scanResults.shodanData.city || 'Unknown'}, {scanResults.shodanData.country || 'Unknown'}</p>
+                  <p>Known Open Ports: {scanResults.shodanData.open_ports?.length || 0}</p>
+                  {scanResults.shodanData.vulns?.length > 0 && (
+                    <p className="text-red-600 dark:text-red-400">
+                      Known Vulnerabilities: {scanResults.shodanData.vulns.length}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

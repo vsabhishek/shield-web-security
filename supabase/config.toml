@@ -39,5 +39,8 @@ enable_manual_linking = false
 [functions.vulnerability-scan]
 verify_jwt = false
 
+[functions.shodan-lookup]
+verify_jwt = false
+
 [functions.send-phishing-email]
 verify_jwt = false
