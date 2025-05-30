@@ -41,50 +41,68 @@ class RealTimeScanService {
       rawOutput: []
     };
 
-    // Try to connect to real WebSocket backend
     try {
-      await this.connectWebSocket();
-      this.sendScanRequest(scanId, target, scanType);
+      await this.connectToRealBackend(target, scanType);
     } catch (error) {
-      console.error('WebSocket connection failed, starting local scan simulation:', error);
-      this.startLocalScan(scanId, target, scanType);
+      console.error('Real backend connection failed:', error);
+      this.activeScan.status = 'failed';
+      throw error;
     }
 
     return scanId;
   }
 
-  private async connectWebSocket(): Promise<void> {
+  private async connectToRealBackend(target: string, scanType: string): Promise<void> {
+    const wsUrl = `wss://bjzqfmmowlghbmsyigwm.functions.supabase.co/functions/v1/vulnerability-scan`;
+    
     return new Promise((resolve, reject) => {
-      // Try multiple WebSocket endpoints
-      const endpoints = [
-        'ws://localhost:5000/socket.io/?EIO=4&transport=websocket',
-        'ws://localhost:8080/ws',
-        'wss://vuln-scanner-backend.herokuapp.com/ws'
-      ];
+      try {
+        // Send scan request via POST first, then upgrade to WebSocket
+        fetch(`https://bjzqfmmowlghbmsyigwm.functions.supabase.co/functions/v1/vulnerability-scan`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Upgrade': 'websocket',
+            'Connection': 'Upgrade'
+          },
+          body: JSON.stringify({
+            target,
+            scanType,
+            userId: 'user123' // This would come from auth context
+          })
+        }).then(response => {
+          console.log('Scan request sent, response:', response.status);
+        });
 
-      const tryConnect = (index: number) => {
-        if (index >= endpoints.length) {
-          reject(new Error('All WebSocket endpoints failed'));
-          return;
-        }
-
-        const ws = new WebSocket(endpoints[index]);
+        // Connect via WebSocket for real-time updates
+        this.ws = new WebSocket(wsUrl);
         
-        ws.onopen = () => {
-          console.log(`Connected to WebSocket: ${endpoints[index]}`);
-          this.ws = ws;
+        this.ws.onopen = () => {
+          console.log('Connected to real vulnerability scanning backend');
           this.reconnectAttempts = 0;
           this.setupWebSocketHandlers();
           resolve();
         };
 
-        ws.onerror = () => {
-          console.log(`Failed to connect to: ${endpoints[index]}`);
-          tryConnect(index + 1);
+        this.ws.onerror = (error) => {
+          console.error('WebSocket connection error:', error);
+          reject(new Error('Failed to connect to vulnerability scanning backend'));
         };
-      };
 
-      tryConnect(0);
+        this.ws.onclose = (event) => {
+          console.log('WebSocket disconnected:', event.code, event.reason);
+          if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            setTimeout(() => {
+              this.reconnectAttempts++;
+              this.connectToRealBackend(target, scanType);
+            }, 2000 * this.reconnectAttempts);
+          }
+        };
+
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
@@ -96,46 +114,29 @@ class RealTimeScanService {
         const data = JSON.parse(event.data);
         this.handleWebSocketMessage(data);
       } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
         // Handle raw text output
         this.handleScanOutput(event.data);
       }
     };
-
-    this.ws.onclose = () => {
-      console.log('WebSocket disconnected');
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        setTimeout(() => {
-          this.reconnectAttempts++;
-          this.connectWebSocket();
-        }, 2000 * this.reconnectAttempts);
-      }
-    };
-
-    this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
   }
 
   private handleWebSocketMessage(data: any) {
+    console.log('Received WebSocket message:', data);
+    
     switch (data.type) {
       case 'scan_output':
-        this.handleScanOutput(data.payload);
+        this.handleScanOutput(data.data);
         break;
       case 'vulnerability_found':
-        this.handleVulnerabilityFound(data.payload);
+        this.handleVulnerabilityFound(data.vulnerability);
         break;
       case 'scan_complete':
-        this.handleScanComplete(data.payload);
+        this.handleScanComplete(data);
         break;
-    }
-  }
-
-  private sendScanRequest(scanId: string, target: string, scanType: string) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
-        type: 'start_scan',
-        payload: { scanId, target, scanType }
-      }));
+      case 'error':
+        this.handleScanError(data.message);
+        break;
     }
   }
 
@@ -143,18 +144,13 @@ class RealTimeScanService {
     if (this.activeScan) {
       this.activeScan.rawOutput.push(output);
       window.dispatchEvent(new CustomEvent('scanOutput', { detail: output }));
-      
-      // Parse for vulnerabilities in real-time
-      const vulnerability = this.parseVulnerabilityFromOutput(output);
-      if (vulnerability) {
-        this.activeScan.vulnerabilities.push(vulnerability);
-      }
     }
   }
 
   private handleVulnerabilityFound(vulnerability: Vulnerability) {
     if (this.activeScan) {
       this.activeScan.vulnerabilities.push(vulnerability);
+      window.dispatchEvent(new CustomEvent('vulnerabilityFound', { detail: vulnerability }));
     }
   }
 
@@ -162,165 +158,18 @@ class RealTimeScanService {
     if (this.activeScan) {
       this.activeScan.status = 'completed';
       this.activeScan.endTime = new Date();
+      this.activeScan.vulnerabilities = result.vulnerabilities || this.activeScan.vulnerabilities;
       this.scanHistory.push(this.activeScan);
       window.dispatchEvent(new CustomEvent('scanComplete', { detail: this.activeScan }));
     }
   }
 
-  private startLocalScan(scanId: string, target: string, scanType: string) {
-    // Enhanced local scanning with more realistic timing and output
-    this.simulateAdvancedScan(scanId, target, scanType);
-  }
-
-  private simulateAdvancedScan(scanId: string, target: string, scanType: string) {
-    const scanSteps = [
-      { phase: 'initialization', duration: 1000, outputs: [
-        `[*] Initializing vulnerability scanner for ${target}`,
-        `[*] Loading vulnerability database (CVE entries: 234,567)`,
-        `[*] Configuring scan type: ${scanType.toUpperCase()}`
-      ]},
-      { phase: 'discovery', duration: 2000, outputs: [
-        `[*] Starting host discovery...`,
-        `[+] Host ${target} is up (0.023s latency)`,
-        `[*] Initiating port scan...`
-      ]},
-      { phase: 'port_scan', duration: 3000, outputs: [
-        `[+] PORT 22/tcp open ssh OpenSSH 8.0 (protocol 2.0)`,
-        `[+] PORT 80/tcp open http Apache httpd 2.4.41`,
-        `[+] PORT 443/tcp open https Apache httpd 2.4.41`,
-        `[+] PORT 3306/tcp open mysql MySQL 8.0.28`,
-        `[+] PORT 5432/tcp open postgresql PostgreSQL 13.7`
-      ]},
-      { phase: 'service_detection', duration: 2500, outputs: [
-        `[*] Running service version detection...`,
-        `[*] Checking for SSL/TLS configuration...`,
-        `[!] Weak SSL cipher detected: TLS_RSA_WITH_AES_128_CBC_SHA`,
-        `[*] Analyzing HTTP headers...`
-      ]},
-      { phase: 'vulnerability_scan', duration: 4000, outputs: [
-        `[*] Starting vulnerability assessment...`,
-        `[!] CRITICAL: CVE-2021-44228 - Apache Log4j RCE detected`,
-        `[!] HIGH: CVE-2020-1472 - Zerologon vulnerability found`,
-        `[!] MEDIUM: Outdated OpenSSH version detected`,
-        `[!] HIGH: SQL injection vulnerability in login form`,
-        `[!] MEDIUM: Cross-site scripting (XSS) in search parameter`
-      ]},
-      { phase: 'finalization', duration: 1000, outputs: [
-        `[*] Generating scan report...`,
-        `[+] Scan completed: 5 vulnerabilities found`,
-        `[+] Total scan time: ${((Date.now() - this.activeScan!.startTime.getTime()) / 1000).toFixed(1)}s`
-      ]}
-    ];
-
-    let currentStep = 0;
-    const executeStep = () => {
-      if (currentStep >= scanSteps.length) {
-        this.completeScan();
-        return;
-      }
-
-      const step = scanSteps[currentStep];
-      let outputIndex = 0;
-
-      const outputInterval = setInterval(() => {
-        if (outputIndex < step.outputs.length) {
-          const output = step.outputs[outputIndex];
-          this.handleScanOutput(output + '\n');
-          outputIndex++;
-        } else {
-          clearInterval(outputInterval);
-          currentStep++;
-          setTimeout(executeStep, 500);
-        }
-      }, step.duration / step.outputs.length);
-    };
-
-    executeStep();
-  }
-
-  private parseVulnerabilityFromOutput(output: string): Vulnerability | null {
-    // Enhanced vulnerability parsing
-    const vulnPatterns = [
-      {
-        pattern: /CVE-2021-44228.*Log4j/i,
-        vuln: {
-          id: 'cve-2021-44228',
-          title: 'Apache Log4j Remote Code Execution',
-          description: 'Critical RCE vulnerability in Apache Log4j library allowing remote code execution via LDAP injection',
-          severity: 'critical' as const,
-          port: 80,
-          service: 'http',
-          cvss: 10.0,
-          recommendation: 'Immediately update Log4j to version 2.17.1 or later, or apply vendor patches'
-        }
-      },
-      {
-        pattern: /CVE-2020-1472.*Zerologon/i,
-        vuln: {
-          id: 'cve-2020-1472',
-          title: 'Zerologon Authentication Bypass',
-          description: 'Critical vulnerability allowing attackers to bypass authentication on Windows domain controllers',
-          severity: 'critical' as const,
-          cvss: 10.0,
-          recommendation: 'Apply Microsoft security update KB4571734 immediately'
-        }
-      },
-      {
-        pattern: /SQL injection/i,
-        vuln: {
-          id: 'sql-injection',
-          title: 'SQL Injection Vulnerability',
-          description: 'Application is vulnerable to SQL injection attacks in user input fields',
-          severity: 'high' as const,
-          port: 80,
-          service: 'http',
-          cvss: 8.5,
-          recommendation: 'Use parameterized queries, input validation, and WAF protection'
-        }
-      },
-      {
-        pattern: /XSS|Cross-site scripting/i,
-        vuln: {
-          id: 'xss-vulnerability',
-          title: 'Cross-Site Scripting (XSS)',
-          description: 'Reflected XSS vulnerability allows execution of malicious scripts',
-          severity: 'medium' as const,
-          port: 80,
-          service: 'http',
-          cvss: 6.1,
-          recommendation: 'Implement proper input sanitization and Content Security Policy (CSP)'
-        }
-      },
-      {
-        pattern: /Weak SSL cipher|TLS_RSA/i,
-        vuln: {
-          id: 'weak-ssl',
-          title: 'Weak SSL/TLS Configuration',
-          description: 'Server accepts weak cipher suites that can be exploited',
-          severity: 'medium' as const,
-          port: 443,
-          service: 'https',
-          cvss: 5.3,
-          recommendation: 'Configure strong cipher suites and disable deprecated protocols'
-        }
-      }
-    ];
-
-    for (const pattern of vulnPatterns) {
-      if (pattern.pattern.test(output)) {
-        return pattern.vuln;
-      }
-    }
-
-    return null;
-  }
-
-  private completeScan() {
+  private handleScanError(message: string) {
     if (this.activeScan) {
-      this.activeScan.status = 'completed';
+      this.activeScan.status = 'failed';
       this.activeScan.endTime = new Date();
-      this.scanHistory.push(this.activeScan);
-      window.dispatchEvent(new CustomEvent('scanComplete', { detail: this.activeScan }));
+      this.activeScan.rawOutput.push(`[ERROR] ${message}\n`);
+      window.dispatchEvent(new CustomEvent('scanError', { detail: message }));
     }
   }
 
@@ -334,7 +183,7 @@ class RealTimeScanService {
 
   stopScan() {
     if (this.ws) {
-      this.ws.send(JSON.stringify({ type: 'stop_scan' }));
+      this.ws.close();
     }
     if (this.activeScan) {
       this.activeScan.status = 'failed';
