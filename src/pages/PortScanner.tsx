@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -67,7 +66,7 @@ const PortScanner = () => {
       toast({
         title: "Real-Time Port Scan Completed",
         description: `Found ${openCount} open ports with Shodan intelligence`,
-        variant: openCount > 0 ? "default" : "secondary",
+        variant: openCount > 0 ? "default" : "default",
       });
     };
 
@@ -318,7 +317,7 @@ const PortScanner = () => {
                     <TableCell className="font-mono">{result.port}</TableCell>
                     <TableCell>
                       <Badge 
-                        variant={result.status === 'open' ? 'default' : 'secondary'}
+                        variant={result.status === 'open' ? 'default' : 'default'}
                         className={
                           result.status === 'open' 
                             ? "bg-green-500 hover:bg-green-500/90" 
